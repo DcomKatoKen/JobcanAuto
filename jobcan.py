@@ -4,13 +4,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 import time
 import jpholiday
-from datetime import datetime
+from datetime import datetime,timedelta
 import json
+import csv
 
 # chromedriverを指定
 CHROMEDRIVER_PATH  = "./chromedriver/chromedriver.exe"
 # configファイル指定
 CONFIG_FILE = "./config.json"
+# csvファイル指定
+CSV_FILE = "./input.csv"
 # ジョブカンログインページ
 JOBCAN_URL = "https://id.jobcan.jp/users/sign_in?app_key=atd"
 # 工数管理ページ
@@ -34,6 +37,23 @@ def load_config(file_path):
     with open(file_path) as f:
         return json.load(f)
 
+# csv
+def load_csv(csv_file_path):
+    try:
+        last_items = []
+        with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
+            csv_reader = csv.reader(csvfile)
+            # 1行目スキップ
+            next(csv_reader, None)
+            for row in csv_reader:
+                if row:
+                    last_item = row[-1]
+                    last_items.append(last_item if last_item else None)
+        return last_items
+    except FileNotFoundError:
+        print("csv not found")
+        return None
+    
 # ログイン
 def login(driver, config):
     # ジョブカンログインページ
@@ -51,6 +71,8 @@ def login(driver, config):
 def main():
     # intput
     config = load_config(CONFIG_FILE)
+    # csv
+    csv_items = load_csv(CSV_FILE)
     # chrome起動
     chrome_service = service.Service(executable_path=CHROMEDRIVER_PATH)
     driver = webdriver.Chrome(service=chrome_service)
@@ -82,14 +104,39 @@ def main():
                 # 何もしない
                 pass
             else:
+                # 時間入力
+                template_value = "2"
+                if csv_items is not None and csv_items[i] is not None:
+                    # cvs入力あり
+                    # テンプレート2選択
+                    template_value = "3"
+                    # 時刻計算
+                    time1 = datetime.strptime(time_element, "%H:%M")
+                    try:
+                        time2 = datetime.strptime(csv_items[i], "%H:%M")
+                    except ValueError:
+                        time2 = datetime.strptime("00:00", "%H:%M")
+                    result = time1 - time2
+                    if result.total_seconds() < 0:
+                        result = timedelta(0)
+                    # 文字列に変換
+                    hours, remainder = divmod(result.total_seconds(), 3600)
+                    minutes = remainder // 60
+                    time_element = f"{int(hours)}:{int(minutes)}"
+
                 # テンプレート選択
                 select = Select(driver.find_element(By.NAME, "template"))
-                select.select_by_value("2")
+                select.select_by_value(template_value)
                 time.sleep(1)
+
                 # 時間入力
-                minutes_input = driver.find_element(By.NAME, "minutes[]")
-                minutes_input.clear()
-                minutes_input.send_keys(time_element)
+                minutes_inputs = driver.find_elements(By.NAME, "minutes[]")
+                minutes_inputs[0].clear()
+                minutes_inputs[0].send_keys(time_element)
+                if csv_items is not None and csv_items[i] is not None:
+                    minutes_inputs[1].clear()
+                    minutes_inputs[1].send_keys(csv_items[i])
+
                 # フォーカスアウト
                 driver.find_element(By.CSS_SELECTOR, ".modal-dialog.modal-lg").click()
                 time.sleep(1)
