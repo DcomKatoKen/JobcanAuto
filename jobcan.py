@@ -105,11 +105,11 @@ def main():
                 pass
             else:
                 # 時間入力
-                template_value = "2"
+                selectIndex = 1
                 if csv_items is not None and csv_items[i] is not None:
                     # cvs入力あり
                     # テンプレート2選択
-                    template_value = "3"
+                    selectIndex = 2
                     # 時刻計算
                     time1 = datetime.strptime(time_element, "%H:%M")
                     try:
@@ -126,7 +126,7 @@ def main():
 
                 # テンプレート選択
                 select = Select(driver.find_element(By.NAME, "template"))
-                select.select_by_value(template_value)
+                select.select_by_index(selectIndex)
                 time.sleep(1)
 
                 # 時間入力
