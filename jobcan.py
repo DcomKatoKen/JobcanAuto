@@ -2,6 +2,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome import service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time
 import jpholiday
 from datetime import datetime,timedelta
@@ -19,18 +22,50 @@ JOBCAN_URL = "https://id.jobcan.jp/users/sign_in?app_key=atd"
 # 工数管理ページ
 MAN_HOURS_URL = "https://ssl.jobcan.jp/employee/man-hour-manage"
 
+def find_elements_with_retry(driver, type, selector, max_retries=10, interval=0.5):
+    retries = 0
+    while retries < max_retries:
+        try:
+            elements = WebDriverWait(driver, interval).until(
+                EC.presence_of_all_elements_located((type, selector))
+            )
+            return elements
+        except TimeoutException:
+            retries += 1
+            print(f"Retry {retries}/{max_retries}. Waiting for elements...")
+    
+    print(f"Failed to find elements after {max_retries} retries. Stopping the application.")
+    raise Exception("Element not found after multiple retries.")
+
+def find_element_with_retry(driver, type, selector, max_retries=10, interval=0.5):
+    retries = 0
+    while retries < max_retries:
+        try:
+            element = WebDriverWait(driver, interval).until(
+                EC.presence_of_element_located((type, selector))
+            )
+            return element
+        except TimeoutException:
+            retries += 1
+            print(f"Retry {retries}/{max_retries}. Waiting for element...")
+        except NoSuchElementException:
+            retries += 1
+            print(f"Retry {retries}/{max_retries}. Element not found.")
+    
+    print(f"Failed to find element after {max_retries} retries. Stopping the application.")
+    raise Exception("Element not found after multiple retries.")
+
 # 月選択
 def select_months_ago(driver, num):
     if num == 0:
         return
-    select_obj = Select(driver.find_element(By.NAME, "month"))
+    select_obj = Select(find_element_with_retry(driver, By.NAME, "month"))
     selected_option_value = select_obj.first_selected_option.get_attribute("value")
     value = int(selected_option_value) - num
     if value == 0:
         # 去年にする？
         value = 12
     select_obj.select_by_value(str(value))
-    time.sleep(3)
 
 # config
 def load_config(file_path):
@@ -59,14 +94,11 @@ def login(driver, config):
     # ジョブカンログインページ
     driver.get(JOBCAN_URL)
     # ID
-    driver.find_element(By.ID, "user_email").send_keys(config["id"].strip())
-    time.sleep(1)
+    find_element_with_retry(driver, By.ID, "user_email").send_keys(config["id"].strip())
     # PASS
-    driver.find_element(By.ID, "user_password").send_keys(config["pass"].strip())
-    time.sleep(1)
+    find_element_with_retry(driver, By.ID, "user_password").send_keys(config["pass"].strip())
     # ログインボタンクリック
-    driver.find_element(By.ID, "login_button").click()
-    time.sleep(3)
+    find_element_with_retry(driver, By.ID, "login_button").click()
 
 def main():
     # intput
@@ -82,21 +114,19 @@ def main():
         login(driver, config)
         # 工数管理ページ
         driver.get(MAN_HOURS_URL)
-        time.sleep(3)
         # 月選択
         select_months_ago(driver, config["months_ago"])
 
-        buttons_ = driver.find_elements(By.CSS_SELECTOR, ".btn.jbc-btn-primary")
+        buttons_ = find_elements_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary")
 
         for i in range(len(buttons_)):
             # 編集ボタン
-            buttons = driver.find_elements(By.CSS_SELECTOR, ".btn.jbc-btn-primary")
+            buttons = find_elements_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary")
             buttons[i].click()
-            time.sleep(1)
             # 時間取得
-            time_element = driver.find_element(By.ID, "edit-menu-title").accessible_name.split('＝')[1]
+            time_element = find_element_with_retry(driver, By.ID, "edit-menu-title").accessible_name.split('＝')[1]
             # 曜日取得
-            date_text = driver.find_element(By.ID, "edit-menu-title").accessible_name.split('＝')[0]
+            date_text = find_element_with_retry(driver, By.ID, "edit-menu-title").accessible_name.split('＝')[0]
             # 年月日取得
             date = datetime.strptime(date_text.split('日')[0], "%Y年%m月%d")
 
@@ -125,12 +155,12 @@ def main():
                     time_element = f"{int(hours)}:{int(minutes)}"
 
                 # テンプレート選択
-                select = Select(driver.find_element(By.NAME, "template"))
+                select = Select(find_element_with_retry(driver, By.NAME, "template"))
                 select.select_by_index(selectIndex)
-                time.sleep(1)
+                time.sleep(0.5)
 
                 # 時間入力
-                minutes_inputs = driver.find_elements(By.NAME, "minutes[]")
+                minutes_inputs = find_elements_with_retry(driver, By.NAME, "minutes[]")
                 minutes_inputs[0].clear()
                 minutes_inputs[0].send_keys(time_element)
                 if csv_items is not None and csv_items[i] is not None:
@@ -138,12 +168,10 @@ def main():
                     minutes_inputs[1].send_keys(csv_items[i])
 
                 # フォーカスアウト
-                driver.find_element(By.CSS_SELECTOR, ".modal-dialog.modal-lg").click()
-                time.sleep(1)
+                find_element_with_retry(driver, By.CSS_SELECTOR, ".modal-dialog.modal-lg").click()
 
             # 保存
-            driver.find_element(By.ID, "save").click()
-            time.sleep(3)
+            find_element_with_retry(driver, By.ID, "save").click()
 
             # 月選択
             select_months_ago(driver, config["months_ago"])
