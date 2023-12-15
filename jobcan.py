@@ -21,6 +21,10 @@ CSV_FILE = "./input.csv"
 JOBCAN_URL = "https://id.jobcan.jp/users/sign_in?app_key=atd"
 # 工数管理ページ
 MAN_HOURS_URL = "https://ssl.jobcan.jp/employee/man-hour-manage"
+# 出席簿ページ
+ATTENDANCE_URL = "https://ssl.jobcan.jp/employee/attendance"
+# 休み
+VACATION = {"有", "ア休"} # "欠" はいらなそう
 
 def find_elements_with_retry(driver, type, selector, max_retries=10, interval=0.5):
     retries = 0
@@ -100,6 +104,33 @@ def login(driver, config):
     # ログインボタンクリック
     find_element_with_retry(driver, By.ID, "login_button").click()
 
+# 休み取得
+def getAttendance(driver, num):
+    # 出席簿ページ
+    driver.get(ATTENDANCE_URL)
+    if num != 0:
+        # 月を変更
+        select_obj = Select(find_element_with_retry(driver, By.NAME, "month"))
+        selected_option_value = select_obj.first_selected_option.get_attribute("value")
+        value = int(selected_option_value) - num
+        if value == 0:
+            # 去年にする？
+            value = 12
+        select_obj.select_by_value(str(value))
+        find_element_with_retry(driver, By.XPATH, '//input[@value="表示"]').click()
+        
+    # 勤怠状況取得
+    td_elements = find_elements_with_retry(driver, By.XPATH,'//td[div[@data-toggle="tooltip"]]')
+    result_list = []
+    for td_element in td_elements:
+        try:
+            font_element = td_element.find_element(By.XPATH, './/font')
+            result_list.append(font_element.text)
+        except:
+            result_list.append('')
+
+    return result_list
+
 def main():
     # intput
     config = load_config(CONFIG_FILE)
@@ -112,6 +143,8 @@ def main():
     try:
         # ログイン
         login(driver, config)
+        # 休暇を取得
+        attendanceList = getAttendance(driver, config["months_ago"])
         # 工数管理ページ
         driver.get(MAN_HOURS_URL)
         # 月選択
@@ -135,7 +168,6 @@ def main():
                 pass
             else:
                 # 時間入力
-                selectIndex = 1
                 if csv_items is not None and csv_items[i] is not None:
                     # cvs入力あり
                     # テンプレート2選択
@@ -153,6 +185,12 @@ def main():
                     hours, remainder = divmod(result.total_seconds(), 3600)
                     minutes = remainder // 60
                     time_element = f"{int(hours)}:{int(minutes)}"
+                elif attendanceList[i] in VACATION:
+                    # 休み
+                    selectIndex = 3
+                else:
+                    # 普通
+                    selectIndex = 1
 
                 # テンプレート選択
                 select = Select(find_element_with_retry(driver, By.NAME, "template"))
