@@ -24,7 +24,7 @@ MAN_HOURS_URL = "https://ssl.jobcan.jp/employee/man-hour-manage"
 # 出席簿ページ
 ATTENDANCE_URL = "https://ssl.jobcan.jp/employee/attendance"
 # 休み
-VACATION = {"有", "ア休"} # "欠" はいらなそう
+VACATION = {"有", "ア休", "夏休"} # "欠" はいらなそう
 
 def find_elements_with_retry(driver, type, selector, max_retries=10, interval=0.5):
     retries = 0
