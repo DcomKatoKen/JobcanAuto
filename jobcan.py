@@ -63,12 +63,18 @@ def find_element_with_retry(driver, type, selector, max_retries=10, interval=0.5
 def select_months_ago(driver, num):
     if num == 0:
         return
+    elif num > 12:
+        return
     select_obj = Select(find_element_with_retry(driver, By.NAME, "month"))
     selected_option_value = select_obj.first_selected_option.get_attribute("value")
     value = int(selected_option_value) - num
-    if value == 0:
-        # 去年にする？
-        value = 12
+    if value <= 0:
+        select_obj_year = Select(find_element_with_retry(driver, By.NAME, "year"))
+        selected_option_year_value = select_obj_year.first_selected_option.get_attribute("value")
+        yaer_value = int(selected_option_year_value) - 1
+        select_obj_year.select_by_value(str(yaer_value))
+        select_obj = Select(find_element_with_retry(driver, By.NAME, "month"))
+        value = value + 12
     select_obj.select_by_value(str(value))
 
 # config
