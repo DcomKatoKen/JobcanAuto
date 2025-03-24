@@ -4,7 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException,StaleElementReferenceException  
 import time
 import jpholiday
 from datetime import datetime,timedelta
@@ -26,38 +26,42 @@ ATTENDANCE_URL = "https://ssl.jobcan.jp/employee/attendance"
 # 休み
 VACATION = {"有", "ア休", "夏休"} # "欠" はいらなそう
 
-def find_elements_with_retry(driver, type, selector, max_retries=10, interval=0.5):
+def find_element_with_retry(driver, by, selector, single=True, max_retries=10, interval=0.5):
     retries = 0
     while retries < max_retries:
         try:
-            elements = WebDriverWait(driver, interval).until(
-                EC.presence_of_all_elements_located((type, selector))
-            )
-            return elements
-        except TimeoutException:
+            if single:
+                elements = WebDriverWait(driver, interval).until(
+                    EC.presence_of_element_located((by, selector))
+                )
+            else:
+                elements = WebDriverWait(driver, interval).until(
+                    EC.presence_of_all_elements_located((by, selector))
+                )
+        except (TimeoutException, NoSuchElementException) as e:
             retries += 1
-            print(f"Retry {retries}/{max_retries}. Waiting for elements...")
-    
-    print(f"Failed to find elements after {max_retries} retries. Stopping the application.")
-    raise Exception("Element not found after multiple retries.")
+            print(f"Retry {retries}/{max_retries} due to {e.__class__.__name__}...")
+            time.sleep(interval)
+            continue
 
-def find_element_with_retry(driver, type, selector, max_retries=10, interval=0.5):
-    retries = 0
-    while retries < max_retries:
         try:
-            element = WebDriverWait(driver, interval).until(
-                EC.presence_of_element_located((type, selector))
-            )
-            return element
-        except TimeoutException:
+            if single:
+                _ = elements.is_displayed()
+            else:
+                for element in elements:
+                    _ = element.is_displayed()
+            return elements
+        except StaleElementReferenceException:
             retries += 1
-            print(f"Retry {retries}/{max_retries}. Waiting for element...")
-        except NoSuchElementException:
+            print(f"Retry {retries}/{max_retries} due to stale element reference...")
+            time.sleep(interval)
+        except Exception as e:
+            print(f"Unexpected error on retry {retries}/{max_retries}: {str(e)}")
             retries += 1
-            print(f"Retry {retries}/{max_retries}. Element not found.")
-    
-    print(f"Failed to find element after {max_retries} retries. Stopping the application.")
-    raise Exception("Element not found after multiple retries.")
+
+    print(f"Failed to find element(s) after {max_retries} retries. Stopping the application.")
+    raise Exception("Element(s) not found after multiple retries.")
+
 
 # 月選択
 def select_months_ago(driver, num):
@@ -126,7 +130,7 @@ def getAttendance(driver, num):
         find_element_with_retry(driver, By.XPATH, '//input[@value="表示"]').click()
         
     # 勤怠状況取得
-    td_elements = find_elements_with_retry(driver, By.XPATH,'//td[div[@data-toggle="tooltip"]]')
+    td_elements = find_element_with_retry(driver, By.XPATH,'//td[div[@data-toggle="tooltip"]]', False)
     result_list = []
     for td_element in td_elements:
         try:
@@ -156,11 +160,11 @@ def main():
         # 月選択
         select_months_ago(driver, config["months_ago"])
 
-        buttons_ = find_elements_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary")
+        buttons_ = find_element_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary", False)
 
         for i in range(len(buttons_)):
             # 編集ボタン
-            buttons = find_elements_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary")
+            buttons = find_element_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary", False)
             buttons[i].click()
             # 時間取得
             time_element = find_element_with_retry(driver, By.ID, "edit-menu-title").accessible_name.split('＝')[1]
@@ -204,7 +208,7 @@ def main():
                 time.sleep(0.5)
 
                 # 時間入力
-                minutes_inputs = find_elements_with_retry(driver, By.NAME, "minutes[]")
+                minutes_inputs = find_element_with_retry(driver, By.NAME, "minutes[]", False)
                 minutes_inputs[0].clear()
                 minutes_inputs[0].send_keys(time_element)
                 if csv_items is not None and csv_items[i] is not None:
