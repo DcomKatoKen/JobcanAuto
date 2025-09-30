@@ -4,7 +4,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException,StaleElementReferenceException  
+from selenium.common.exceptions import (
+    TimeoutException, 
+    NoSuchElementException,
+    StaleElementReferenceException,
+    ElementNotInteractableException,
+    ElementClickInterceptedException
+)
 import time
 import jpholiday
 from datetime import datetime,timedelta
@@ -62,6 +68,17 @@ def find_element_with_retry(driver, by, selector, single=True, max_retries=10, i
     print(f"Failed to find element(s) after {max_retries} retries. Stopping the application.")
     raise Exception("Element(s) not found after multiple retries.")
 
+def retry_action(action, max_retries=10, interval=0.5):
+    retries = 0
+    while retries < max_retries:
+        try:
+            action()
+            return
+        except (StaleElementReferenceException, ElementNotInteractableException, ElementClickInterceptedException) as e:
+            retries += 1
+            print(f"Retry {retries}/{max_retries} due to {e.__class__.__name__}...")
+            time.sleep(interval)
+    raise Exception(f"Action failed after {max_retries} retries.")
 
 # 月選択
 def select_months_ago(driver, num):
@@ -165,7 +182,8 @@ def main():
         for i in range(len(buttons_)):
             # 編集ボタン
             buttons = find_element_with_retry(driver, By.CSS_SELECTOR, ".btn.jbc-btn-primary", False)
-            buttons[i].click()
+            retry_action(lambda: buttons[i].click())
+
             # 時間取得
             time_element = find_element_with_retry(driver, By.ID, "edit-menu-title").accessible_name.split('＝')[1]
             # 曜日取得
@@ -216,10 +234,10 @@ def main():
                     minutes_inputs[1].send_keys(csv_items[i])
 
                 # フォーカスアウト
-                find_element_with_retry(driver, By.CSS_SELECTOR, ".modal-dialog.modal-lg").click()
+                retry_action(lambda: find_element_with_retry(driver, By.CSS_SELECTOR, ".modal-dialog.modal-lg").click())
 
             # 保存
-            find_element_with_retry(driver, By.ID, "save").click()
+            retry_action(lambda: find_element_with_retry(driver, By.ID, "save").click())
 
             # 月選択
             select_months_ago(driver, config["months_ago"])
